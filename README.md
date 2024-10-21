@@ -2,6 +2,14 @@
 
 > ⚠️ This service is provided for testing purposes only. It is not intended for production use.
 
+## Install Dependencies
+
+Requires [Node JS](https://nodejs.org/en/download/package-manager).
+
+```bash
+npm ci
+```
+
 ## Run
 
 ```bash
