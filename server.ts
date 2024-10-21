@@ -28,6 +28,9 @@ import { createLogger, format, transports, Logger } from "winston";
 // subscribe Wormhole Core logs on Sepolia
 // {"jsonrpc":"2.0","id": 1, "method": "eth_subscribe", "params": ["logs", {"address": "0x4a8bc80Ed5a4067f1CCf107057b8270E0cC11A78", "topics": ["0x6eb224fb001ed210e379b335e35efe88672a8ce935d981a6896b27ffdf52a3b2"]}]}
 
+// Guardian subscription looks like
+// {"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["logs",{"address":["0x4a8bc80Ed5a4067f1CCf107057b8270E0cC11A78"],"fromBlock":"0x0","toBlock":"latest","topics":[["0x6eb224fb001ed210e379b335e35efe88672a8ce935d981a6896b27ffdf52a3b2"],null]}]}
+
 // unsubscribe
 // {"id":1,"jsonrpc":"2.0","method":"eth_unsubscribe","params":["0x00000000000000000000000000000001"]}
 
@@ -98,22 +101,42 @@ wss.on("connection", (ws: WebSocket) => {
           newHeadSubscribers.push({ ws, id });
           // {"jsonrpc":"2.0","result":"0x07859641bba6dd7d21cdb79d704f679b","id":1}
           ws.send(`{"jsonrpc":"2.0","result":"${id}","id":${json.id}}`);
-        } else if (
-          json.params.length === 2 &&
-          json.params[0] === "logs" &&
-          typeof json.params[1]?.address === "string" && // for now, enforce 1 address
-          json.params[1]?.topics?.length === 1 && // for now, enforce 1 topic
-          typeof json.params[1]?.topics[0] === "string"
-        ) {
-          // {"jsonrpc":"2.0","id": 1, "method": "eth_subscribe", "params": ["logs", {"address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "topics": ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]}]}
-          let id = getNextSub();
-          logSubscribers.push({
-            ws,
-            id,
-            address: json.params[1].address,
-            topics: json.params[1].topics,
-          });
-          ws.send(`{"jsonrpc":"2.0","result":"${id}","id":${json.id}}`);
+        } else if (json.params.length === 2 && json.params[0] === "logs") {
+          if (
+            typeof json.params[1]?.address === "string" && // single address
+            json.params[1]?.topics?.length === 1 && // one topic
+            typeof json.params[1]?.topics[0] === "string"
+          ) {
+            // single array of topics
+            // {"jsonrpc":"2.0","id": 1, "method": "eth_subscribe", "params": ["logs", {"address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "topics": ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"]}]}
+            let id = getNextSub();
+            logSubscribers.push({
+              ws,
+              id,
+              address: json.params[1].address,
+              topics: json.params[1].topics,
+            });
+            ws.send(`{"jsonrpc":"2.0","result":"${id}","id":${json.id}}`);
+          } else if (
+            json.params[1]?.address?.length && // array of addresses
+            json.params[1]?.topics?.length >= json.params[1]?.address?.length // array of arrays of topics
+          ) {
+            // {"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["logs",{"address":["0x4a8bc80Ed5a4067f1CCf107057b8270E0cC11A78"],"fromBlock":"0x0","toBlock":"latest","topics":[["0x6eb224fb001ed210e379b335e35efe88672a8ce935d981a6896b27ffdf52a3b2"],null]}]}
+            let id = getNextSub();
+            for (let idx = 0; idx < json.params[1].address.length; idx++) {
+              let address = json.params[1].address[idx];
+              let topics = json.params[1].topics[idx];
+              if (address && topics && topics.length) {
+                logSubscribers.push({
+                  ws,
+                  id,
+                  address,
+                  topics,
+                });
+              }
+            }
+            ws.send(`{"jsonrpc":"2.0","result":"${id}","id":${json.id}}`);
+          }
         }
       } else if (json.method === "eth_unsubscribe") {
         if (json.params.length === 1) {
