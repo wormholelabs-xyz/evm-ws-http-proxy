@@ -84,6 +84,19 @@ function getNextSub() {
   return `0x${id.toString(16).padStart(32, "0")}`;
 }
 
+async function passthroughRPC(json: object, ws: WebSocket) {
+  if (RPC) {
+    const response = (
+      await axios.post(RPC, json, {
+        // don't parse the response
+        transformResponse: (x) => x,
+      })
+    )?.data;
+    logger.debug(response);
+    ws.send(response);
+  }
+}
+
 wss.on("connection", (ws: WebSocket) => {
   logger.info("New client connected");
 
@@ -91,6 +104,10 @@ wss.on("connection", (ws: WebSocket) => {
     logger.debug(`Received message: ${message}`);
     try {
       const json = JSON.parse(message);
+      if (json.length) {
+        passthroughRPC(json, ws);
+        return;
+      }
       if (!json.id || typeof json.id !== "number") {
         return;
       }
@@ -151,17 +168,7 @@ wss.on("connection", (ws: WebSocket) => {
           ws.send(`{"jsonrpc":"2.0","result":true,"id":${json.id}}`);
         }
       } else {
-        // pass through
-        (async () => {
-          const response = (
-            await axios.post(RPC, json, {
-              // don't parse the response
-              transformResponse: (x) => x,
-            })
-          )?.data;
-          logger.debug(response);
-          ws.send(response);
-        })();
+        passthroughRPC(json, ws);
       }
     } catch (e) {
       // ignore bad messages
